@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_PASSWORD: mysecretpassword
+  migrate:
+    image: migrate/migrate
+    volumes:
+      - ./migrations:/migrations
+    command: ["-path", "/migrations", "-database", "postgres://postgres:mysecretpassword@postgres:5432/postgres?sslmode=disable", "up"]
+    depends_on:
+      postgres:
+        condition: service_started
+  server:
+    build: .
+    ports:
+      - 8080:8080
+    environment:
+      DB_URL: postgres://postgres:mysecretpassword@postgres:5432/postgres
+    depends_on:
+      migrate:
+        condition: service_completed_successfully

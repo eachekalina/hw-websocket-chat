@@ -12,7 +12,7 @@ import (
 )
 
 type client struct {
-	s        *serv
+	s        *MsgServ
 	conn     *websocket.Conn
 	out      chan model.Message
 	nickname string
@@ -20,7 +20,7 @@ type client struct {
 	close    context.CancelFunc
 }
 
-func newClient(s *serv, conn *websocket.Conn) *client {
+func newClient(s *MsgServ, conn *websocket.Conn) *client {
 	return &client{
 		s:    s,
 		conn: conn,
@@ -71,10 +71,21 @@ func (c *client) outFunc() error {
 
 func (c *client) inFunc() error {
 	var err error
-	c.nickname, err = c.recvString(c.ctx)
+	nickname, err := c.recvString(c.ctx)
 	if err != nil {
 		return err
 	}
+	log.Println(nickname)
+	password, err := c.recvBytes(c.ctx)
+	if err != nil {
+		return err
+	}
+	log.Println("got password")
+	err = c.s.authUser(c.ctx, nickname, password)
+	if err != nil {
+		return err
+	}
+	c.nickname = nickname
 	for {
 		msgStr, err := c.recvString(c.ctx)
 		if err != nil {
@@ -94,17 +105,25 @@ func (c *client) inFunc() error {
 }
 
 func (c *client) recvString(ctx context.Context) (string, error) {
+	bytes, err := c.recvBytes(ctx)
+	if err != nil {
+		return "", err
+	}
+	return string(bytes), nil
+}
+
+func (c *client) recvBytes(ctx context.Context) ([]byte, error) {
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return nil, ctx.Err()
 	default:
 		mt, bytes, err := c.conn.ReadMessage()
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		if mt == websocket.CloseMessage {
-			return "", errors.New("closed")
+			return nil, errors.New("closed")
 		}
-		return string(bytes), nil
+		return bytes, nil
 	}
 }

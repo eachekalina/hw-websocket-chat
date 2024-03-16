@@ -13,25 +13,21 @@ import (
 	"time"
 )
 
-type MsgClient interface {
-	Run(ctx context.Context, host string) error
-}
-
-type client struct {
+type MsgClient struct {
 	conn *websocket.Conn
 	send chan string
 	recv chan string
 	ctx  context.Context
 }
 
-func NewMsgClient() MsgClient {
-	return &client{
+func NewMsgClient() *MsgClient {
+	return &MsgClient{
 		send: make(chan string),
 		recv: make(chan string),
 	}
 }
 
-func (c *client) Run(ctx context.Context, host string) error {
+func (c *MsgClient) Run(ctx context.Context, host string) error {
 	u := url.URL{
 		Scheme: "ws",
 		Host:   host,
@@ -54,7 +50,7 @@ func (c *client) Run(ctx context.Context, host string) error {
 	return eg.Wait()
 }
 
-func (c *client) sendFunc() error {
+func (c *MsgClient) sendFunc() error {
 	for {
 		select {
 		case message := <-c.send:
@@ -77,8 +73,8 @@ func (c *client) sendFunc() error {
 	}
 }
 
-func (c *client) readFunc() error {
-	fmt.Println("!!! First enter your nickname, then enter messages, one on each line !!!")
+func (c *MsgClient) readFunc() error {
+	fmt.Println("!!! First enter your nickname, then enter your password, then enter messages, one on each line !!!")
 	r := bufio.NewReader(os.Stdin)
 	for {
 		line, err := r.ReadString('\n')
@@ -90,7 +86,7 @@ func (c *client) readFunc() error {
 	}
 }
 
-func (c *client) recvFunc() error {
+func (c *MsgClient) recvFunc() error {
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -108,7 +104,7 @@ func (c *client) recvFunc() error {
 	}
 }
 
-func (c *client) writeFunc() error {
+func (c *MsgClient) writeFunc() error {
 	for {
 		select {
 		case line := <-c.recv:
