@@ -2,30 +2,47 @@ package repository
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"encoding/json"
+	"fmt"
+	"homework/internal/kafka"
 	"homework/internal/model"
+	"homework/internal/pb"
 )
 
 type MessageRepository struct {
-	pool *pgxpool.Pool
+	client   pb.MessageStorageClient
+	producer *kafka.Producer
 }
 
-func NewMessageRepository(pool *pgxpool.Pool) *MessageRepository {
-	return &MessageRepository{pool: pool}
+func NewMessageRepository(client pb.MessageStorageClient, producer *kafka.Producer) *MessageRepository {
+	return &MessageRepository{client: client, producer: producer}
 }
 
 func (r *MessageRepository) AddMessage(ctx context.Context, message model.Message) error {
-	_, err := r.pool.Exec(ctx, `INSERT INTO messages (sent_time, nickname, message) VALUES ($1, $2, $3)`, message.SentTime, message.Nickname, message.Message)
-	return err
+	data, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("json: %w", err)
+	}
+	err = r.producer.SendMessage(data)
+	if err != nil {
+		return fmt.Errorf("kafka: %w", err)
+	}
+	return nil
 }
 
 func (r *MessageRepository) GetLastMessages(ctx context.Context, n int) ([]model.Message, error) {
-	rows, err := r.pool.Query(ctx, `SELECT sent_time, nickname, message FROM messages ORDER BY sent_time DESC LIMIT $1`, n)
+	req := &pb.GetLastMessagesRequest{Number: int32(n)}
+	msgs, err := r.client.GetLastMessages(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("grpc: %w", err)
 	}
-	defer rows.Close()
-
-	return pgx.CollectRows(rows, pgx.RowToStructByName[model.Message])
+	res := make([]model.Message, len(msgs.Messages))
+	for i, msg := range msgs.Messages {
+		res[i] = model.Message{
+			SentTime: msg.SentTime.AsTime(),
+			Nickname: msg.Nickname,
+			Message:  msg.Message,
+		}
+	}
+	return res, nil
 }

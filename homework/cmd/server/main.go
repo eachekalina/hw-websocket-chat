@@ -2,30 +2,43 @@ package main
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"homework/internal/kafka"
 	"homework/internal/msgserv"
+	"homework/internal/pb"
 	"homework/internal/repository"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 )
 
 func main() {
-	connString, found := os.LookupEnv("DB_URL")
-	if !found {
-		connString = "postgres://postgres:mysecretpassword@localhost:5432/postgres"
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	pool, err := pgxpool.New(ctx, connString)
+	conn, err := grpc.Dial(
+		os.Getenv("GRPC_ADDR"),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("grpc: %v\n", err)
+		return
 	}
-	defer pool.Close()
-	msgRepo := repository.NewMessageRepository(pool)
-	userRepo := repository.NewUserRepository(pool)
+
+	msgClient := pb.NewMessageStorageClient(conn)
+	userClient := pb.NewUserStorageClient(conn)
+
+	brokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
+	prod, err := kafka.NewProducer(brokers, "messages")
+	if err != nil {
+		log.Printf("kafka: %v\n", err)
+		return
+	}
+
+	msgRepo := repository.NewMessageRepository(msgClient, prod)
+	userRepo := repository.NewUserRepository(userClient)
 
 	serv := msgserv.NewMsgServ(msgRepo, userRepo)
 	err = serv.Serve(ctx, ":8080")

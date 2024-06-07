@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package storage;
+option go_package = "./;pb";
+
+import "google/protobuf/timestamp.proto";
+
+service MessageStorage {
+  rpc GetLastMessages(GetLastMessagesRequest) returns (GetLastMessagesResponse) {}
+}
+
+message Message {
+  google.protobuf.Timestamp sent_time = 1;
+  string nickname = 2;
+  string message = 3;
+}
+
+message GetLastMessagesRequest {
+  int32 number = 1;
+}
+
+message GetLastMessagesResponse {
+  repeated Message messages = 1;
+}

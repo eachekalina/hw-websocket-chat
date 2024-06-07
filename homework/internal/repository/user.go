@@ -2,31 +2,40 @@ package repository
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"fmt"
 	"homework/internal/model"
+	"homework/internal/pb"
 )
 
 type UserRepository struct {
-	pool *pgxpool.Pool
+	client pb.UserStorageClient
 }
 
-func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
-	return &UserRepository{pool: pool}
+func NewUserRepository(client pb.UserStorageClient) *UserRepository {
+	return &UserRepository{client: client}
 }
 
 func (r *UserRepository) AddUser(ctx context.Context, user model.User) error {
-	_, err := r.pool.Exec(ctx, `INSERT INTO users (nickname, password_hash) VALUES ($1, $2)`, user.Nickname, user.PasswordHash)
-	return err
+	req := &pb.AddUserRequest{User: &pb.User{
+		Nickname:     user.Nickname,
+		PasswordHash: user.PasswordHash,
+	}}
+	_, err := r.client.AddUser(ctx, req)
+	if err != nil {
+		return fmt.Errorf("grpc: %w", err)
+	}
+	return nil
 }
 
 func (r *UserRepository) GetUser(ctx context.Context, nickname string) (model.User, error) {
-	row := r.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE nickname = $1`, nickname)
-
-	var passwordHash []byte
-	err := row.Scan(&passwordHash)
+	req := &pb.GetUserRequest{Nickname: nickname}
+	res, err := r.client.GetUser(ctx, req)
 	if err != nil {
-		return model.User{}, err
+		return model.User{}, fmt.Errorf("grpc: %w", err)
 	}
-
-	return model.User{Nickname: nickname, PasswordHash: passwordHash}, nil
+	user := model.User{
+		Nickname:     res.User.Nickname,
+		PasswordHash: res.User.PasswordHash,
+	}
+	return user, nil
 }
